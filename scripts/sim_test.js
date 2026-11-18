@@ -12,7 +12,7 @@ const world = buildWorld(rng);
 console.log(`World: ${Object.keys(world.clubs).length} clubs, ${Object.keys(world.players).length} players in ${Date.now() - t0}ms`);
 const fixtures = generateAllFixtures(rng);
 console.log(`Fixtures: ${fixtures.length}`);
-for (const lg of LEAGUES) {
+for (const lg of LEAGUES.filter((l) => l.tier === 1 || process.argv.includes('--all'))) {
   const fx = fixtures.filter((f) => f.league === lg.id);
   console.log(`  ${lg.name}: ${fx.length} matches, ${fx[0].date} → ${fx[fx.length - 1].date}`);
 }
@@ -39,7 +39,7 @@ console.log(`\nSimulated ${agg.n} matches in ${Date.now() - t1}ms`);
 console.log(`Per match → goals ${per('goals')} | shots ${per('shots')} | on target ${per('ot')} | corners ${per('corners')} | fouls ${per('fouls')} | yellows ${per('yellows')} | reds ${per('reds')} | pens ${per('pens')} | offsides ${per('offsides')} | home poss ${per('poss')}%`);
 console.log(`Home ${(agg.home / agg.n * 100).toFixed(1)}% | Draw ${(agg.draw / agg.n * 100).toFixed(1)}% | Away ${(agg.away / agg.n * 100).toFixed(1)}%`);
 
-for (const lg of LEAGUES) {
+for (const lg of LEAGUES.filter((l) => l.tier === 1 || process.argv.includes('--all'))) {
   const table = computeTable(fixtures, lg.id, CLUBS[lg.id].map((c) => c.id));
   console.log(`\n${lg.name} — top 4 / bottom 2:`);
   [...table.slice(0, 4), ...table.slice(-2)].forEach((r) => console.log(`  ${world.clubs[r.club].name.padEnd(28)} P${r.p} W${r.w} D${r.d} L${r.l} ${r.gf}-${r.ga} ${r.pts}pts`));

@@ -1,9 +1,9 @@
 // Title screen: new career (choose league + club) or load a save.
 import { h, panel, toast, stars } from '../dom.js';
-import { LEAGUES, CLUBS, SEASON_LABEL } from '../../data/leagues.js';
+import { LEAGUES, CLUBS, COUNTRIES, leaguesOf, seasonLabel, baseYear } from '../../data/leagues.js';
 import { Game, fmtDate, fmtMoney } from '../../engine/game.js';
 
-let selLeague = 'svn1', selClub = null, managerName = '';
+let selLeague = 'eng1', selClub = null, managerName = '';
 
 export function bg() {
   const club = selClub && CLUBS[selLeague].find((c) => c.id === selClub);
@@ -13,7 +13,7 @@ export function bg() {
 export function render(app) {
   const root = h('div', { class: 'start' });
   root.appendChild(h('div', { style: { display: 'flex', alignItems: 'flex-end', gap: '20px', marginBottom: '14px' } },
-    h('h1', { class: 'logo' }, 'TOUCHLINE MANAGER', h('small', {}, `SEASON ${SEASON_LABEL}`)),
+    h('h1', { class: 'logo' }, 'TOUCHLINE MANAGER', h('small', {}, 'SEASON 2026/27')),
     h('div', { class: 'muted', style: { paddingBottom: '8px' } }, 'A fast, classic football management game. Inspired by Championship Manager 01/02.')));
 
   const hyd = app.hydrated && Object.values(app.hydrated.clubs || {}).some((c) => c.players?.length) ? app.hydrated : null;
@@ -22,7 +22,11 @@ export function render(app) {
     : h('span', { class: 'orange' }, 'Seed database (best-known 2026/27 squads + generated fillers). Run "npm run hydrate" to pull live rosters.');
 
   const nameIn = h('input', { class: 'input', placeholder: 'Your name', value: managerName, oninput: (e) => (managerName = e.target.value), style: { width: '220px' } });
-  const tabs = h('div', { class: 'tabs' }, LEAGUES.map((l) => h('div', { class: `tab ${selLeague === l.id ? 'active' : ''}`, onclick: () => { selLeague = l.id; selClub = null; app.refresh(); } }, `${l.name}`)));
+  const curCountry = LEAGUES.find((l) => l.id === selLeague).country;
+  const pick = (id) => { selLeague = id; selClub = null; app.refresh(); };
+  const tabs = h('div', {},
+    h('div', { class: 'tabs' }, COUNTRIES.map((c) => h('div', { class: `tab ${c === curCountry ? 'active' : ''}`, onclick: () => pick(leaguesOf(c)[0].id) }, c))),
+    h('div', { class: 'tabs' }, leaguesOf(curCountry).map((l) => h('div', { class: `tab ${selLeague === l.id ? 'active' : ''}`, onclick: () => pick(l.id) }, l.name))));
   const clubs = CLUBS[selLeague].slice().sort((a, b) => b.rep - a.rep);
   const lg = LEAGUES.find((l) => l.id === selLeague);
   const list = h('table', { class: 'cm' },
@@ -36,7 +40,7 @@ export function render(app) {
     if (!selClub) return toast('Choose a club first', true);
     const name = managerName.trim() || 'The Gaffer';
     app.main.innerHTML = '';
-    app.main.appendChild(h('div', { class: 'loading' }, 'Building the 2026/27 database…'));
+    app.main.appendChild(h('div', { class: 'loading' }, 'Building the world database…'));
     setTimeout(() => {
       const g = Game.newGame({ managerName: name, clubId: selClub, hydrated: app.hydrated });
       app.startGame(g);
@@ -47,7 +51,7 @@ export function render(app) {
     h('div', { class: 'grow' }, panel('New Career', [
       h('div', { class: 'row', style: { alignItems: 'center', marginBottom: '8px' } }, h('label', { class: 'field' }, 'Manager name', nameIn), h('div', { class: 'grow' }), dataNote),
       tabs,
-      h('div', { class: 'muted', style: { marginBottom: '6px' } }, `${lg.name} — ${CLUBS[selLeague].length} clubs, ${lg.legs === 4 ? '36' : (CLUBS[selLeague].length - 1) * 2} rounds, starts ${fmtDate(lg.start)}. Double-click a club to start.`),
+      h('div', { class: 'muted', style: { marginBottom: '6px' } }, `${lg.name} ${seasonLabel(lg, baseYear(lg))} — ${CLUBS[selLeague].length} clubs, ${(CLUBS[selLeague].length - 1) * lg.legs} rounds, starts ${fmtDate(lg.start)}.${lg.cycle === 'cal' ? ' Calendar-year league: your career begins in January 2027.' : ''} Double-click a club to start.`),
       h('div', { class: 'club-list' }, list),
       h('div', { style: { marginTop: '10px', display: 'flex', gap: '8px' } }, h('button', { class: 'btn primary', onclick: begin, disabled: !selClub }, selClub ? `Manage ${CLUBS[selLeague].find((c) => c.id === selClub).name}` : 'Select a club')),
     ])),
@@ -57,6 +61,8 @@ export function render(app) {
       h('span', { class: 'k' }, 'Esc'), h('span', { class: 'v' }, 'Back'),
       h('span', { class: 'k' }, 'P'), h('span', { class: 'v' }, 'Pause match'),
       h('span', { class: 'k' }, 'Ctrl+S'), h('span', { class: 'v' }, 'Save game'))))));
+  root.appendChild(h('div', { class: 'studio-foot' }, 'A ', h('b', {}, 'Blind Dragon Studios'), ' game · © 2026 Blind Dragon Studios. All rights reserved. · ',
+    h('a', { href: 'https://github.com/Blind-Dragon-Studios', target: '_blank', rel: 'noopener' }, 'blind-dragon-studios')));
   return root;
 }
 

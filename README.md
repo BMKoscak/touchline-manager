@@ -1,6 +1,6 @@
 # Touchline Manager 26/27
 
-A fast, classic football management game for the **2026/27 season**, inspired by the speed, layout and mechanics of *Championship Manager: Season 01/02*. It adds full-window stadium backgrounds fetched online and live spoken dual commentary.
+A **Blind Dragon Studios** game. A fast, classic football management game for the **2026/27 season**, inspired by the speed, layout and mechanics of *Championship Manager: Season 01/02*. It adds full-window stadium backgrounds fetched online and live spoken dual commentary.
 
 > Unofficial fan project. Not affiliated with Sports Interactive, Eidos/Square Enix, any league or any club.
 
@@ -19,7 +19,7 @@ Node 18+ is required. `npm run build && npm run preview` serves the production b
 
 | Area | Details |
 |---|---|
-| **Leagues (2026/27)** | Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Prva Liga Telemach. Club lists include confirmed 2026/27 promotions (e.g. Coventry, Hull, Ipswich, Racing, Deportivo, Málaga, Venezia, Frosinone, Monza, Schalke, Elversberg, Paderborn, Troyes, Le Mans, Brinje Grosuplje, Nafta 1903). PrvaLiga uses its real four-round, 36-match format. |
+| **Leagues (2026/27)** | **26 divisions, 403 clubs.** England tiers 1–6 (Premier League, Championship, League One, League Two, National League, National League North/South); Scottish Premiership, Championship, League One, League Two; Cymru Premier; NIFL Premiership; League of Ireland Premier & First Division; La Liga, Serie A, Bundesliga, Ligue 1, Prva Liga Telemach; MLS (East/West), USL Championship (East/West) and the Canadian Premier League. Promotion and relegation run between connected divisions (incl. the National League North/South split). Calendar-year leagues (Ireland, USL, CPL) run Feb–Oct and roll over on 1 January; careers there start in January 2027. Top-flight club lists include confirmed 2026/27 promotions (e.g. Coventry, Hull, Ipswich, Racing, Deportivo, Málaga, Venezia, Frosinone, Monza, Schalke, Elversberg, Paderborn, Troyes, Le Mans, Brinje Grosuplje, Nafta 1903). PrvaLiga uses its real four-round, 36-match format. |
 | **Attributes** | Classic 1–20 schema in three columns: Technical (12), Mental (10), Physical (9), plus a goalkeeping set. |
 | **Tactics** | 4-4-2, 4-1-3-2, 4-3-3, 3-5-2, 4-2-3-1, 5-3-2. Drag-and-drop selection, **With Ball / Without Ball 5×5 grid** per player, attacking runs. Team instructions: mentality, passing, tackling, pressing, offside trap, counter attack, men behind ball. Set-piece takers and captain. |
 | **Match engine** | Minute-by-minute simulation where wib-wob shape, instructions, fatigue, familiarity, morale and cards all feed in. Tuned per match to about 2.5 goals, 28 shots, 21 fouls, 3 yellows, 0.3 penalties and ~42% home wins. Five subs in three windows; in-match tactics and subs. |
@@ -97,3 +97,7 @@ node scripts/transfer_test.js         # offer → counter → contract → compl
 - Domestic leagues only: no cups or European competitions yet, though the Champions League background hook is ready.
 - No promotion/relegation between tiers yet; the same clubs return each season.
 - No loans or contract renewals for your own players. Expiring players leave in the summer.
+
+## Copyright
+
+© 2026 Blind Dragon Studios. All rights reserved. See [LICENSE](LICENSE).

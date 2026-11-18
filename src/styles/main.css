@@ -192,3 +192,7 @@ canvas.radar { width: 100%; aspect-ratio: 105 / 68; display: block; background: 
 
 @media (max-width: 1000px) { .tactics, .match, .inbox { grid-template-columns: 1fr; } #app { grid-template-columns: 140px 1fr; } }
 #modal .pitch { height: calc(90vh - 200px); min-height: 360px; }
+
+.copyright { margin-top: 8px; font-size: 9px; color: var(--dim); opacity: .8; letter-spacing: .03em; }
+.studio-foot { margin-top: 14px; text-align: center; font-size: 11px; color: var(--dim); }
+.studio-foot a { color: inherit; }

@@ -2,6 +2,8 @@
   "name": "touchline-manager-2627",
   "version": "1.0.0",
   "private": true,
+  "author": "Blind Dragon Studios",
+  "license": "UNLICENSED",
   "description": "A fast, classic-style football management game for the 2026/27 season, inspired by Championship Manager 01/02.",
   "type": "module",
   "scripts": {

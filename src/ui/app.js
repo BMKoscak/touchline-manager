@@ -128,7 +128,7 @@ export class App {
     const sd = this.side; sd.innerHTML = '';
     const g = this.game;
     if (!g) {
-      sd.appendChild(h('div', { class: 'sidebar-foot', style: { marginTop: 0, borderTop: 'none' } }, 'Start a new career or load a saved game.'));
+      sd.appendChild(h('div', { class: 'sidebar-foot', style: { marginTop: 0, borderTop: 'none' } }, 'Start a new career or load a saved game.', h('div', { class: 'copyright' }, '© 2026 Blind Dragon Studios')));
       return;
     }
     const pending = !!g.s.pendingMatch;
@@ -141,7 +141,8 @@ export class App {
     sd.appendChild(h('div', { class: 'sidebar-foot' },
       nf ? h('div', {}, h('div', { class: 'yellow' }, 'Next match'), `${nf.home === g.user.id ? 'vs' : '@'} ${g.club(nf.home === g.user.id ? nf.away : nf.home).name}`, h('br'), fmtDate(nf.date)) : null,
       h('div', { style: { marginTop: '6px' } }, `${g.league(g.user.league).name} — ${ordinalPos(g.position(g.user.id))}`),
-      h('div', { style: { marginTop: '6px' } }, `Board confidence: ${Math.round(g.s.board.confidence)}%`)));
+      h('div', { style: { marginTop: '6px' } }, `Board confidence: ${Math.round(g.s.board.confidence)}%`),
+      h('div', { class: 'copyright' }, '© 2026 Blind Dragon Studios')));
   }
 
   continue() {
@@ -171,7 +172,7 @@ export class App {
   async saveGame(slot = 'slot1', announce = false) {
     if (!this.game) return;
     const st = this.game.serialize();
-    const meta = { manager: st.managerName, club: this.game.user.name, clubId: st.userClubId, date: st.date, season: st.season, savedAt: Date.now() };
+    const meta = { manager: st.managerName, club: this.game.user.name, clubId: st.userClubId, date: st.date, season: this.game.season, savedAt: Date.now() };
     try { await idb.set('saves', slot, { meta, state: st }); if (announce) toast('Game saved'); }
     catch (e) { toast(`Save failed: ${e.message}`, true); }
   }
@@ -184,6 +185,7 @@ export class App {
   async loadGame(slot) {
     const v = await idb.get('saves', slot);
     if (!v) { toast('Save not found', true); return; }
+    if ((v.state.version || 1) < 2) { toast('This save is from an older version (before the league expansion) and can\'t be loaded. Please start a new career.', true); return; }
     this.startGame(new Game(v.state));
     toast(`Loaded ${v.meta.club} — ${fmtDate(v.meta.date)}`);
   }

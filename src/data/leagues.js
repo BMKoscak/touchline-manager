@@ -1,10 +1,11 @@
+import { EXTRA_LEAGUES, EXTRA_CLUBS, PROMOTION_RULES } from './leaguesExtra.js';
 // 2026/27 seed database: leagues and clubs.
 // Club lists reflect confirmed 2026/27 promotions/relegations.
 // Managers marked null are unknown/unconfirmed in the seed — run `npm run hydrate` to refresh.
 //
 // Club tuple: [id, name, short, stadium, capacity, city, manager, primaryColor, secondaryColor, reputation(1-100)]
 
-export const LEAGUES = [
+const BASE_LEAGUES = [
   {
     id: 'eng1', name: 'Premier League', country: 'England', nat: 'ENG', sportsDbName: 'English Premier League',
     legs: 2, start: '2026-08-22', end: '2027-05-23', breaks: [['2026-09-05', '2026-09-13'], ['2026-10-10', '2026-10-18'], ['2026-11-14', '2026-11-22'], ['2027-03-20', '2027-03-28']],
@@ -45,7 +46,7 @@ export const LEAGUES = [
 
 const C = (id, name, short, stadium, cap, city, manager, c1, c2, rep) => ({ id, name, short, stadium, capacity: cap, city, manager, colors: [c1, c2], rep });
 
-export const CLUBS = {
+const BASE_CLUBS = {
   eng1: [
     C('arsenal', 'Arsenal', 'ARS', 'Emirates Stadium', 60704, 'London', 'Mikel Arteta', '#EF0107', '#FFFFFF', 93),
     C('aston-villa', 'Aston Villa', 'AVL', 'Villa Park', 42640, 'Birmingham', 'Unai Emery', '#670E36', '#95BFE5', 82),
@@ -166,13 +167,41 @@ export const CLUBS = {
   ],
 };
 
-// Transfer windows for 2026/27.
+// Merge in the lower English divisions, Scotland, Wales, Northern Ireland, Ireland, USA and Canada.
+for (const lg of BASE_LEAGUES) { lg.tier = 1; lg.cycle = 'eu'; }
+const ORDER = ['eng1', 'eng2', 'eng3', 'eng4', 'eng5', 'eng6n', 'eng6s', 'sco1', 'sco2', 'sco3', 'sco4', 'wal1', 'nir1', 'irl1', 'irl2',
+  'esp1', 'ita1', 'ger1', 'fra1', 'svn1', 'usa1e', 'usa1w', 'usa2e', 'usa2w', 'can1'];
+const ALL = [...BASE_LEAGUES, ...EXTRA_LEAGUES.map((l) => ({ cycle: 'eu', ...l }))];
+export const LEAGUES = ORDER.map((id) => ALL.find((l) => l.id === id));
+export const CLUBS = { ...BASE_CLUBS, ...EXTRA_CLUBS };
+export { PROMOTION_RULES };
+BASE_LEAGUES.find((l) => l.id === 'eng1').cont = [4, 'Champions League'];
+BASE_LEAGUES.find((l) => l.id === 'esp1').cont = [4, 'Champions League'];
+BASE_LEAGUES.find((l) => l.id === 'ita1').cont = [4, 'Champions League'];
+BASE_LEAGUES.find((l) => l.id === 'ger1').cont = [4, 'Champions League'];
+BASE_LEAGUES.find((l) => l.id === 'fra1').cont = [3, 'Champions League'];
+BASE_LEAGUES.find((l) => l.id === 'svn1').cont = [1, 'Champions League'];
+export const COUNTRIES = [...new Set(LEAGUES.map((l) => l.country))];
+export const leaguesOf = (country) => LEAGUES.filter((l) => l.country === country);
+
+// Transfer windows (repeat every year).
 export const TRANSFER_WINDOWS = [
-  ['2026-06-15', '2026-09-01'],
-  ['2027-01-02', '2027-02-02'],
+  ['06-15', '09-01'],
+  ['01-02', '02-02'],
 ];
+export const inTransferWindow = (iso) => { const md = iso.slice(5); return TRANSFER_WINDOWS.some(([a, b]) => md >= a && md <= b); };
+
+// Season helpers: 'eu' leagues run Aug–May (base 2026), 'cal' leagues run Feb–Nov (base 2027).
+export const baseYear = (lg) => (lg.cycle === 'cal' ? 2027 : 2026);
+export function seasonDef(lg, year) {
+  const off = year - baseYear(lg);
+  const sh = (iso) => (off ? `${Number(iso.slice(0, 4)) + off}${iso.slice(4)}` : iso);
+  return { ...lg, start: sh(lg.start), end: sh(lg.end), breaks: lg.breaks.map(([a, b]) => [sh(a), sh(b)]) };
+}
+export const seasonLabel = (lg, year) => (lg.cycle === 'cal' ? String(year) : `${year}/${String((year + 1) % 100).padStart(2, '0')}`);
 
 export const GAME_START_DATE = '2026-07-01';
+export const CAL_START_DATE = '2027-01-04'; // careers in calendar-year leagues (Ireland, USL, CPL) start here
 export const SEASON_LABEL = '2026/27';
 
 export function allClubs() {

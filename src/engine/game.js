@@ -1,6 +1,6 @@
 // Game state: calendar, inbox, transfers, contracts, finances, training, board, season rollover.
 import { RNG, clamp } from '../core/rng.js';
-import { LEAGUES, CLUBS, TRANSFER_WINDOWS, GAME_START_DATE, SEASON_LABEL } from '../data/leagues.js';
+import { LEAGUES, CLUBS, GAME_START_DATE, CAL_START_DATE, PROMOTION_RULES, inTransferWindow, seasonDef, seasonLabel, baseYear } from '../data/leagues.js';
 import { buildWorld, leagueById, createPlayer, setNextId, getNextId } from '../data/generator.js';
 import { NAME_POOLS, LEAGUE_NAT_MIX } from '../data/names.js';
 import { generateLeagueFixtures, computeTable, addDays, dayOfWeek, daysBetween } from './fixtures.js';
@@ -40,21 +40,41 @@ export class Game {
   static newGame({ managerName, clubId, hydrated = null, seed = (Date.now() & 0x7fffffff) }) {
     const rng = new RNG(seed);
     const world = buildWorld(rng, hydrated);
-    const fixtures = [];
-    let id = 1;
-    for (const lg of LEAGUES) { const fx = generateLeagueFixtures(lg, CLUBS[lg.id].map((c) => c.id), rng, id); id += fx.length; fixtures.push(...fx); }
-    fixtures.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const userLeague = leagueById(world.clubs[clubId].league);
+    const cal = userLeague.cycle === 'cal';
+    const leagueClubs = Object.fromEntries(LEAGUES.map((l) => [l.id, CLUBS[l.id].map((c) => c.id)]));
+    const leagueSeasons = Object.fromEntries(LEAGUES.map((l) => [l.id, { year: baseYear(l), done: false }]));
+    for (const l of LEAGUES) if (l.region) for (const id of leagueClubs[l.id]) world.clubs[id].region = l.region;
     const state = {
-      version: 1, seed, date: GAME_START_DATE, season: SEASON_LABEL, seasonYear: 2026, userClubId: clubId, managerName,
-      clubs: world.clubs, players: world.players, nextId: world.nextId, fixtures, inbox: [], offers: [], scheduled: [],
+      version: 2, seed, date: cal ? CAL_START_DATE : GAME_START_DATE, userClubId: clubId, managerName,
+      leagueClubs, leagueSeasons, nextFixtureId: 1,
+      clubs: world.clubs, players: world.players, nextId: world.nextId, fixtures: [], inbox: [], offers: [], scheduled: [],
       training: { fitness: 2, tactics: 2, ballControl: 2, shooting: 2, attacking: 2, defending: 2 },
       board: { confidence: 60, expectation: null }, pendingMatch: null, lastMatch: null, meta: world.meta, sacked: false, nextMsgId: 1, nextOfferId: 1,
       history: [],
     };
     const g = new Game(state);
-    g.welcome();
+    for (const l of LEAGUES) g.scheduleLeague(l.id);
+    g.sortFixtures();
+    // Calendar-year careers start in January: play the European half-season that has already happened.
+    if (cal) { for (const f of state.fixtures) if (!f.played && f.date < state.date) g.playAI(f); g._tableCache = {}; }
+    g.seasonStart(true);
     return g;
   }
+
+  scheduleLeague(lgId) {
+    const lg = leagueById(lgId);
+    const def = seasonDef(lg, this.s.leagueSeasons[lgId].year);
+    const fx = generateLeagueFixtures(def, this.s.leagueClubs[lgId], this.rng, this.s.nextFixtureId);
+    this.s.nextFixtureId += fx.length;
+    this.s.fixtures.push(...fx);
+  }
+  sortFixtures() { this.s.fixtures.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)); }
+  seasonLabelOf(lgId) { return seasonLabel(leagueById(lgId), this.s.leagueSeasons[lgId].year); }
+  get season() { return this.seasonLabelOf(this.user.league); }
+  leagueClubIds(lgId) { return this.s.leagueClubs[lgId]; }
+  promoCount(lgId) { return PROMOTION_RULES.reduce((n, r) => n + (r.lower === lgId ? r.n : r.lowers?.includes(lgId) ? r.upEach : 0), 0); }
+  relCount(lgId) { return PROMOTION_RULES.reduce((n, r) => n + (r.upper === lgId ? (r.n ?? r.upEach * r.lowers.length) : 0), 0); }
 
   // ---------- accessors ----------
   get date() { return this.s.date; }
@@ -64,10 +84,10 @@ export class Game {
   league(id) { return leagueById(id); }
   squad(clubId) { return this.club(clubId).playerIds.map((id) => this.s.players[id]).filter(Boolean); }
   unread() { return this.s.inbox.filter((m) => !m.read).length; }
-  inWindow(date = this.s.date) { return TRANSFER_WINDOWS.some(([a, b]) => date >= shiftYear(a, this.s.seasonYear - 2026) && date <= shiftYear(b, this.s.seasonYear - 2026)); }
+  inWindow(date = this.s.date) { return inTransferWindow(date); }
   table(leagueId) {
     const key = leagueId + ':' + this.s.fixtures.filter((f) => f.played && f.league === leagueId).length;
-    if (!this._tableCache[key]) this._tableCache[key] = computeTable(this.s.fixtures, leagueId, CLUBS[leagueId].map((c) => c.id));
+    if (!this._tableCache[key]) this._tableCache[key] = computeTable(this.s.fixtures, leagueId, this.s.leagueClubs[leagueId]);
     return this._tableCache[key];
   }
   clubFixtures(clubId) { return this.s.fixtures.filter((f) => f.home === clubId || f.away === clubId); }
@@ -82,14 +102,26 @@ export class Game {
     return m;
   }
 
-  welcome() {
+  /** Board expectations + start-of-season messages for the user's league. */
+  seasonStart(first = false) {
     const c = this.user, lg = this.league(c.league);
-    const rank = CLUBS[c.league].slice().sort((a, b) => b.rep - a.rep).findIndex((x) => x.id === c.id) + 1;
-    const n = CLUBS[c.league].length;
-    const exp = rank <= 1 ? 'win the league title' : rank <= 3 ? 'finish in the top three' : rank <= 6 ? 'qualify for Europe' : rank <= Math.ceil(n * 0.6) ? 'finish in mid-table' : 'avoid relegation';
-    this.s.board.expectation = { text: exp, target: rank <= 1 ? 1 : rank <= 3 ? 3 : rank <= 6 ? 6 : rank <= Math.ceil(n * 0.6) ? Math.ceil(n * 0.6) : n - 3 };
-    this.msg(`Welcome to ${c.name}`, `The board of ${c.name} welcome ${this.s.managerName} as the new manager.\n\nYou take charge for the ${this.s.season} ${lg.name} season. Your transfer budget is ${fmtMoney(c.finances.transferBudget)} and the weekly wage budget is ${fmtMoney(c.finances.wageBudget)}.\n\nThe board expect you to ${exp}.`, { from: 'Chairman', type: 'board' });
-    this.msg('Transfer window open', `The summer transfer window is open until ${fmtDate(shiftYear('2026-09-01', this.s.seasonYear - 2026))}. Use Player Search to find targets, then make an offer from the player's profile.`, { from: 'Director of Football' });
+    const members = this.s.leagueClubs[c.league].map((id) => this.club(id)).sort((a, b) => b.rep - a.rep);
+    const n = members.length, rank = members.findIndex((x) => x.id === c.id) + 1;
+    const promo = this.promoCount(c.league), rel = this.relCount(c.league);
+    let exp, target;
+    if (rank === 1) { exp = 'win the league title'; target = 1; }
+    else if (promo && rank <= promo + 1) { exp = 'win promotion'; target = promo; }
+    else if (promo && rank <= Math.ceil(n * 0.35)) { exp = 'challenge for promotion'; target = Math.max(promo + 4, Math.ceil(n * 0.3)); }
+    else if (!promo && rank <= 3) { exp = 'finish in the top three'; target = 3; }
+    else if (!promo && lg.cont && rank <= lg.cont[0] + 2) { exp = lg.cont[1] === 'Playoffs' ? 'reach the playoffs' : 'qualify for Europe'; target = lg.cont[0] + (lg.cont[1] === 'Playoffs' ? 0 : 2); }
+    else if (rank <= Math.ceil(n * 0.6)) { exp = 'finish in mid-table'; target = Math.ceil(n * 0.6); }
+    else { exp = rel ? 'avoid relegation' : 'avoid finishing bottom'; target = n - Math.max(rel, 1); }
+    this.s.board.expectation = { text: exp, target };
+    const season = this.season;
+    if (first) this.msg(`Welcome to ${c.name}`, `The board of ${c.name} welcome ${this.s.managerName} as the new manager.\n\nYou take charge for the ${season} ${lg.name} season. Your transfer budget is ${fmtMoney(c.finances.transferBudget)} and the weekly wage budget is ${fmtMoney(c.finances.wageBudget)}.\n\nThe board expect you to ${exp}.`, { from: 'Chairman', type: 'board' });
+    else this.msg(`${season} season expectations`, `A new ${lg.name} season begins. The board expect you to ${exp}.\n\nTransfer budget: ${fmtMoney(c.finances.transferBudget)}. Wage budget: ${fmtMoney(c.finances.wageBudget)}/wk.`, { from: 'Chairman', type: 'board' });
+    if (this.inWindow()) this.msg('Transfer window open', `The transfer window is open. Use Player Search to find targets, then make an offer from the player's profile.`, { from: 'Director of Football' });
+    else if (first) this.msg('Transfer window closed', 'The transfer window is currently closed. It reopens on 2 January and 15 June.', { from: 'Director of Football' });
     const nf = this.nextFixture();
     if (nf) this.msg('Season schedule', `Our first ${lg.name} match is ${nf.home === c.id ? 'at home to' : 'away at'} ${this.club(nf.home === c.id ? nf.away : nf.home).name} on ${fmtDate(nf.date)}.`, { from: 'Club Secretary' });
   }
@@ -112,8 +144,9 @@ export class Game {
     const s = this.s;
     s.date = addDays(s.date, 1);
     const d = s.date;
-    // Season rollover on 1 July
-    if (d.slice(5) === '07-01' && Number(d.slice(0, 4)) > s.seasonYear) { this.newSeason(); }
+    // Season rollovers: 1 July for European-calendar leagues, 1 January for calendar-year leagues.
+    if (d.slice(5) === '07-01') { this.globalRollover(); this.rolloverCycle('eu'); }
+    if (d.slice(5) === '01-01') this.rolloverCycle('cal');
     this.dailyRecovery();
     if (dayOfWeek(d) === 1) { this.weeklyWages(); this.weeklyTraining(); }
     if (d.slice(8) === '01') this.monthly();
@@ -124,11 +157,13 @@ export class Game {
     // Matches today
     const today = s.fixtures.filter((f) => f.date === d && !f.played);
     let userFx = null;
+    const touched = new Set();
     for (const f of today) {
       if (f.home === s.userClubId || f.away === s.userClubId) { userFx = f; continue; }
       this.playAI(f);
+      touched.add(f.league);
     }
-    this.checkSeasonEnd();
+    this.checkSeasonEnd(touched);
     if (s.sacked) return { status: 'sacked' };
     if (userFx) { s.pendingMatch = userFx.id; return { status: 'match', fixture: userFx }; }
     return { status: 'day' };
@@ -225,11 +260,11 @@ export class Game {
   }
 
   windowNotices() {
-    const y = this.s.seasonYear - 2026;
-    const d = this.s.date;
-    if (d === shiftYear('2026-08-25', y)) this.msg('Transfer deadline approaching', 'The summer window closes on 1 September. Any deals must be completed before then.', { from: 'Director of Football' });
-    if (d === shiftYear('2026-09-02', y)) this.msg('Transfer window closed', 'The summer transfer window is now closed. It reopens on 2 January.', { from: 'Director of Football' });
-    if (d === shiftYear('2027-01-02', y)) this.msg('January window open', 'The winter transfer window is now open until 2 February.', { from: 'Director of Football' });
+    const md = this.s.date.slice(5);
+    if (md === '08-25') this.msg('Transfer deadline approaching', 'The summer window closes on 1 September. Any deals must be completed before then.', { from: 'Director of Football' });
+    if (md === '09-02') this.msg('Transfer window closed', 'The summer transfer window is now closed. It reopens on 2 January.', { from: 'Director of Football' });
+    if (md === '01-02') this.msg('January window open', 'The winter transfer window is now open until 2 February.', { from: 'Director of Football' });
+    if (md === '06-15') this.msg('Summer window open', 'The summer transfer window is now open until 1 September.', { from: 'Director of Football' });
   }
 
   // ---------- matches ----------
@@ -318,6 +353,7 @@ export class Game {
     if (!fx) return;
     this.applyResult(fx, sim);
     this.s.pendingMatch = null;
+    this.checkSeasonEnd(new Set([fx.league]));
     const s = sim.summary();
     const isHome = fx.home === this.s.userClubId;
     const gf = isHome ? fx.hg : fx.ag, ga = isHome ? fx.ag : fx.hg;
@@ -545,45 +581,103 @@ export class Game {
 
   toggleTransferList(playerId) { const p = this.player(playerId); p.transferListed = !p.transferListed; return p.transferListed; }
 
-  // ---------- season ----------
-  checkSeasonEnd() {
+  // ---------- seasons, promotion & relegation ----------
+  leagueComplete(lgId) {
+    let any = false;
+    for (const f of this.s.fixtures) if (f.league === lgId) { any = true; if (!f.played) return false; }
+    return any;
+  }
+
+  /** Called after matches: closes any league whose season has just finished (prize money, board review). */
+  checkSeasonEnd(leagueIds) {
     const s = this.s;
-    if (s.seasonComplete) return;
-    if (s.fixtures.every((f) => f.played)) {
-      s.seasonComplete = true;
-      const lg = this.league(this.user.league);
-      const lines = [];
-      for (const L of LEAGUES) {
-        const t = this.table(L.id);
-        const champ = this.club(t[0].club);
-        t.forEach((row, i) => { const c = this.club(row.club); this.ledger(c, Math.round(L.prizeTop * Math.pow(0.86, i)), 'prize', `${L.name} prize money (${ordinal(i + 1)})`); });
-        lines.push(`${L.name}: ${champ.name}`);
+    for (const lgId of leagueIds) {
+      const st = s.leagueSeasons[lgId];
+      if (st.done || !this.leagueComplete(lgId)) continue;
+      st.done = true;
+      const L = this.league(lgId);
+      const t = this.table(lgId);
+      t.forEach((row, i) => { const c = this.club(row.club); this.ledger(c, Math.round(L.prizeTop * Math.pow(0.86, i)), 'prize', `${L.name} prize money (${ordinal(i + 1)})`); });
+      const champ = this.club(t[0].club);
+      if (lgId !== this.user.league) {
+        if (L.country === this.league(this.user.league).country) this.msg(`${champ.name} win the ${L.name}`, `${champ.name} are ${L.name} champions for ${seasonLabel(L, st.year)}.`, { from: 'News Desk', type: 'news' });
+        continue;
       }
-      const pos = this.position(s.userClubId);
+      const pos = t.findIndex((r) => r.club === s.userClubId) + 1;
       const exp = s.board.expectation;
       const met = pos <= exp.target;
-      s.board.confidence = clamp(s.board.confidence + (met ? 20 : -25), 0, 100);
-      s.history.push({ season: s.season, club: this.user.name, league: lg.name, position: pos });
-      this.msg('Season review', `The ${s.season} season is over. We finished ${ordinal(pos)} in the ${lg.name}.\n\nThe board ${met ? 'are delighted — you met their expectation to' : 'are disappointed — you failed to'} ${exp.text}.\n\nChampions:\n${lines.join('\n')}`, { from: 'Chairman', type: 'board' });
+      const promo = this.promoCount(lgId), rel = this.relCount(lgId);
+      const fate = promo && pos <= promo ? '\n\nWe have won promotion! We will play in a higher division next season.' : rel && pos > t.length - rel ? '\n\nWe have been relegated and will drop a division next season.' : '';
+      s.board.confidence = clamp(s.board.confidence + (met ? 20 : -25) + (fate.includes('promotion') ? 15 : fate.includes('relegated') ? -20 : 0), 0, 100);
+      s.history.push({ season: seasonLabel(L, st.year), club: this.user.name, league: L.name, position: pos });
+      this.msg('Season review', `The ${seasonLabel(L, st.year)} season is over. We finished ${ordinal(pos)} in the ${L.name}${pos === 1 ? ' — CHAMPIONS!' : '.'}${fate}\n\nThe board ${met ? 'are delighted — you met their expectation to' : 'are disappointed — you failed to'} ${exp.text}.\n\nChampions: ${champ.name}`, { from: 'Chairman', type: 'board' });
       if (s.board.confidence < 10) { s.sacked = true; this.msg('You have been sacked', 'Following a disappointing season the board have decided to relieve you of your duties.', { from: 'Chairman', type: 'board' }); }
     }
   }
 
-  newSeason() {
-    const s = this.s, r = this.rng;
-    s.seasonYear += 1;
-    s.season = `${s.seasonYear}/${String((s.seasonYear + 1) % 100).padStart(2, '0')}`;
-    s.seasonComplete = false;
-    const yearOff = s.seasonYear - 2026;
-    // Aging, contracts, retirements
-    for (const p of Object.values(s.players)) {
-      p.age++;
+  /** New season for every league of a cycle: promotion/relegation, fixtures, stats reset. */
+  rolloverCycle(cycle) {
+    const s = this.s;
+    const leagues = LEAGUES.filter((l) => l.cycle === cycle);
+    // Finish anything left over (e.g. a postponed user fixture) before rolling over.
+    for (const f of s.fixtures) if (!f.played && leagues.some((l) => l.id === f.league) && f.date < s.date) { if (f.id === s.pendingMatch) s.pendingMatch = null; this.playAI(f); }
+    const ready = leagues.filter((l) => this.leagueComplete(l.id));
+    if (!ready.length) return;
+    const ids = new Set(ready.map((l) => l.id));
+    this.checkSeasonEnd(ids);
+    const finals = Object.fromEntries(ready.map((l) => [l.id, this.table(l.id).map((r) => r.club)]));
+    const moves = [];
+    for (const rule of PROMOTION_RULES.filter((r) => r.cycle === cycle && ids.has(r.upper))) {
+      if (rule.lowers) {
+        if (!rule.lowers.every((x) => ids.has(x))) continue;
+        const up = rule.lowers.flatMap((lo) => finals[lo].slice(0, rule.upEach).map((club) => ({ club, from: lo, to: rule.upper })));
+        const need = Object.fromEntries(rule.lowers.map((lo) => [lo, rule.upEach]));
+        const down = finals[rule.upper].slice(-up.length).map((club) => {
+          const region = this.club(club).region;
+          const to = rule.lowers.find((lo) => need[lo] > 0 && leagueById(lo).region === region) || rule.lowers.find((lo) => need[lo] > 0);
+          need[to]--;
+          return { club, from: rule.upper, to };
+        });
+        moves.push(...up, ...down);
+      } else {
+        if (!ids.has(rule.lower)) continue;
+        moves.push(...finals[rule.upper].slice(-rule.n).map((club) => ({ club, from: rule.upper, to: rule.lower })));
+        moves.push(...finals[rule.lower].slice(0, rule.n).map((club) => ({ club, from: rule.lower, to: rule.upper })));
+      }
+    }
+    for (const m of moves) s.leagueClubs[m.from] = s.leagueClubs[m.from].filter((id) => id !== m.club);
+    const userCountry = this.league(this.user.league).country;
+    const summary = {};
+    for (const m of moves) {
+      s.leagueClubs[m.to].push(m.club);
+      const c = this.club(m.club), toL = leagueById(m.to), fromL = leagueById(m.from);
+      const up = toL.tier < fromL.tier;
+      c.league = m.to;
+      if (toL.region) c.region = toL.region;
+      c.rep = clamp(c.rep + (up ? 3 : -3), 5, 99);
+      if (m.club === s.userClubId) this.msg(up ? `Welcome to the ${toL.name}!` : `Life in the ${toL.name}`, up ? `After promotion we now compete in the ${toL.name}. The step up will be tough — strengthen the squad where you can.` : `Following relegation we now play in the ${toL.name}. The board want an immediate bounce back.`, { from: 'Chairman', type: 'board' });
+      if (fromL.country === userCountry) (summary[`${fromL.name} → ${toL.name}`] ||= []).push(c.name);
+    }
+    if (Object.keys(summary).length) this.msg('Promotion & relegation', Object.entries(summary).map(([k, v]) => `${k}:\n  ${v.join(', ')}`).join('\n\n'), { from: 'News Desk', type: 'news' });
+    for (const l of ready) s.leagueSeasons[l.id] = { year: s.leagueSeasons[l.id].year + 1, done: false };
+    s.fixtures = s.fixtures.filter((f) => !ids.has(f.league));
+    for (const l of ready) this.scheduleLeague(l.id);
+    this.sortFixtures();
+    for (const l of ready) for (const cid of s.leagueClubs[l.id]) for (const p of this.squad(cid)) {
       p.stats = { apps: 0, goals: 0, assists: 0, ratingSum: 0, rated: 0, yellows: 0, reds: 0, cleanSheets: 0 };
       p.yellowAccum = 0;
     }
+    this._tableCache = {};
+    if (ids.has(this.user.league)) this.seasonStart(false);
+  }
+
+  /** 1 July: ageing, contracts, retirements, youth intake and budgets for every club. */
+  globalRollover() {
+    const s = this.s, r = this.rng;
+    const year = Number(s.date.slice(0, 4));
+    for (const p of Object.values(s.players)) p.age++;
     for (const c of Object.values(s.clubs)) {
       c.finances.seasonIncome = {}; c.finances.seasonExpense = {};
-      const lg = this.league(c.league);
       for (const p of this.squad(c.id)) {
         const expired = p.contractEnd <= s.date;
         const retire = p.age >= 35 && r.chance(0.35 + (p.age - 35) * 0.2);
@@ -597,12 +691,12 @@ export class Game {
             c.playerIds = c.playerIds.filter((id) => id !== p.id);
             delete s.players[p.id];
             this.msg(`${p.name} leaves on a free`, `${p.name}'s contract has expired and he has left the club.`, { from: 'Director of Football' });
-          } else { p.contractEnd = `${s.seasonYear + r.int(1, 3)}-06-30`; p.wage = Math.round(p.wage * 1.08); }
+          } else { p.contractEnd = `${year + r.int(1, 3)}-06-30`; p.wage = Math.round(p.wage * 1.08); }
         }
       }
       // Youth intake to maintain squad size
       while (c.playerIds.length < 24) {
-        const nat = r.weighted(LEAGUE_NAT_MIX[c.league], (m) => m[1])[0];
+        const nat = r.weighted(LEAGUE_NAT_MIX[c.league] || [['ENG', 1]], (m) => m[1])[0];
         const pool = NAME_POOLS[nat] || NAME_POOLS.ENG;
         const pos = r.pick(['GK', 'DC', 'DR', 'DL', 'MC', 'DMC', 'AMR', 'AML', 'FC', 'FC']);
         const ca = clamp(Math.round(clubTargetCA(c.rep) - 32 + r.normal(0, 8)), 25, 160);
@@ -616,18 +710,7 @@ export class Game {
       c.finances.wageBudget = Math.round(this.squad(c.id).reduce((a, p) => a + p.wage, 0) * 1.12);
     }
     s.nextId = this.peekNextId();
-    // Fixtures for the new season (same divisions)
-    const fixtures = [];
-    let id = 1;
-    for (const lg of LEAGUES) {
-      const shifted = { ...lg, start: shiftYear(lg.start, yearOff), end: shiftYear(lg.end, yearOff), breaks: lg.breaks.map(([a, b]) => [shiftYear(a, yearOff), shiftYear(b, yearOff)]) };
-      const fx = generateLeagueFixtures(shifted, CLUBS[lg.id].map((c) => c.id), r, id); id += fx.length; fixtures.push(...fx);
-    }
-    fixtures.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    s.fixtures = fixtures;
     s.offers = s.offers.filter((o) => o.status === 'pending' && o.kind === 'buy');
-    this._tableCache = {};
-    this.welcome();
   }
 
   peekNextId() { return getNextId(); }

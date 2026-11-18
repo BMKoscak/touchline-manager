@@ -1,7 +1,7 @@
 // Fixtures & results — own club, plus per-round league results and match details.
 import { h, panel } from '../dom.js';
 import { fmtDate } from '../../engine/game.js';
-import { LEAGUES } from '../../data/leagues.js';
+import { LEAGUES, COUNTRIES, leaguesOf } from '../../data/leagues.js';
 
 let tab = 'club', round = null, leagueSel = null;
 
@@ -29,7 +29,7 @@ export function render(app, params) {
     const list = lgFx.filter((f) => f.round === r);
     body = h('div', {},
       h('div', { class: 'row', style: { alignItems: 'center', marginBottom: '8px' } },
-        h('select', { class: 'input', onchange: (e) => { leagueSel = e.target.value; round = null; app.refresh(); } }, LEAGUES.map((l) => h('option', { value: l.id, selected: l.id === lgId }, l.name))),
+        h('select', { class: 'input', onchange: (e) => { leagueSel = e.target.value; round = null; app.refresh(); } }, COUNTRIES.map((c) => h('optgroup', { label: c }, leaguesOf(c).map((l) => h('option', { value: l.id, selected: l.id === lgId }, l.name))))),
         h('button', { class: 'btn small', onclick: () => { round = Math.max(1, r - 1); app.refresh(); } }, '◀'), h('b', {}, `Round ${r} — ${fmtDate(list[0]?.date || g.date)}`),
         h('button', { class: 'btn small', onclick: () => { round = Math.min(maxRound, r + 1); app.refresh(); } }, '▶')),
       h('table', { class: 'cm' }, h('tbody', {}, list.map((f) => h('tr', { class: `${f.played ? 'click' : ''} ${f.home === g.user.id || f.away === g.user.id ? 'me' : ''}`, onclick: f.played ? () => app.go('fixtures', { fixture: f.id }) : null },
