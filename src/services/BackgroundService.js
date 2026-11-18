@@ -2,6 +2,7 @@
 // Priority: TheSportsDB (team id or premium key) → Wikipedia PageImages (Wikimedia Commons) → Unsplash (if key) → procedural fallback.
 // Resolved images are cached as blobs in IndexedDB, plus an in-memory object-URL map for instant (<16ms) repeats.
 import { idb } from '../core/storage.js';
+import { CLUBS } from '../data/leagues.js';
 
 const WIKI = 'https://en.wikipedia.org/w/api.php';
 const BAD_IMG = /logo|crest|badge|emblem|map|locator|kit|flag|\.svg/i;
@@ -75,7 +76,13 @@ export class BackgroundService {
       // 2) Live sources
       let found = null;
       try {
-        if (ctx.kind === 'competition') found = await this.fromWikipedia(ctx.league.trophyQuery) || await this.fromWikipedia(ctx.league.wikiImage);
+        if (ctx.kind === 'competition') {
+          found = await this.fromWikipedia(ctx.league.trophyQuery).catch(() => null) || await this.fromWikipedia(ctx.league.wikiImage).catch(() => null);
+          if (!found) { // fall back to the league's biggest stadium
+            const top = (CLUBS[ctx.league.id] || []).slice().sort((a, b) => b.capacity - a.capacity)[0];
+            if (top) found = await this.fromWikipedia(`${top.stadium} stadium ${top.city}`).catch(() => null) || await this.fromWikipedia(top.stadium).catch(() => null);
+          }
+        }
         else {
           found = await this.fromSportsDB(ctx.club).catch(() => null)
             || await this.fromWikipedia(`${ctx.club.stadium} stadium ${ctx.club.city}`).catch(() => null)

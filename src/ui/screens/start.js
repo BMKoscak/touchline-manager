@@ -5,7 +5,10 @@ import { Game, fmtDate, fmtMoney } from '../../engine/game.js';
 
 let selLeague = 'svn1', selClub = null, managerName = '';
 
-export function bg() { return { kind: 'competition', league: LEAGUES.find((l) => l.id === selLeague) }; }
+export function bg() {
+  const club = selClub && CLUBS[selLeague].find((c) => c.id === selClub);
+  return club ? { kind: 'club', club } : { kind: 'competition', league: LEAGUES.find((l) => l.id === selLeague) };
+}
 
 export function render(app) {
   const root = h('div', { class: 'start' });
@@ -24,7 +27,7 @@ export function render(app) {
   const lg = LEAGUES.find((l) => l.id === selLeague);
   const list = h('table', { class: 'cm' },
     h('thead', {}, h('tr', {}, h('th', {}, 'Club'), h('th', {}, 'Stadium'), h('th', { class: 'num' }, 'Capacity'), h('th', {}, 'Manager'), h('th', {}, 'Reputation'), h('th', { class: 'num' }, 'Budget'))),
-    h('tbody', {}, clubs.map((c) => h('tr', { class: `click ${selClub === c.id ? 'me' : ''}`, onclick: () => { selClub = c.id; app.setTheme(c); app.bg.show({ kind: 'club', club: c }); app.renderTop(); app.refresh(); }, ondblclick: () => begin() },
+    h('tbody', {}, clubs.map((c) => h('tr', { class: `click ${selClub === c.id ? 'me' : ''}`, onclick: () => { selClub = c.id; app.setTheme(c); app.refresh(); }, ondblclick: () => begin() },
       h('td', {}, h('span', { class: 'color-sw', style: { background: c.colors[0] } }), h('span', { class: 'color-sw', style: { background: c.colors[1] } }), ' ', h('b', {}, c.name)),
       h('td', {}, c.stadium), h('td', { class: 'num' }, c.capacity.toLocaleString('en-GB')), h('td', { class: 'muted' }, c.manager || '—'),
       h('td', { class: 'stars' }, stars(c.rep, 100)), h('td', { class: 'num' }, fmtMoney(Math.round(1_000_000 * Math.exp((c.rep - 40) / 11) * (selLeague === 'svn1' ? 0.6 : 1))))))));
