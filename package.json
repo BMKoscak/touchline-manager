@@ -1,0 +1,17 @@
+{
+  "name": "touchline-manager-2627",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A fast, classic-style football management game for the 2026/27 season, inspired by Championship Manager 01/02.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "hydrate": "node scripts/hydrate_db.js",
+    "test:sim": "node scripts/sim_test.js"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}
