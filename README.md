@@ -4,7 +4,7 @@ A **Blind Dragon Studios** game. A fast, classic football management game for th
 
 > Unofficial fan project. Not affiliated with Sports Interactive, Eidos/Square Enix, any league or any club.
 
-**Play online:** https://bmkoscak.github.io/touchline-manager/
+**Play online:** https://blind-dragon-studios.github.io/touchline-manager/ · Also listed on [blind-dragon-studios.tech](https://blind-dragon-studios.tech/projects.html)
 
 ## Quick start
 
@@ -95,7 +95,6 @@ node scripts/transfer_test.js         # offer → counter → contract → compl
 ## Known limitations / next steps
 
 - Domestic leagues only: no cups or European competitions yet, though the Champions League background hook is ready.
-- No promotion/relegation between tiers yet; the same clubs return each season.
 - No loans or contract renewals for your own players. Expiring players leave in the summer.
 
 ## Copyright
